@@ -6,7 +6,7 @@ An interactive web-based simulator for **Pushdown Automata (PDA)** with step-by-
 
 ## 🚀 Live Demo
 
-👉 https://your-username.github.io/stackflow-pda-visualizer/
+👉 https://adskrk.github.io/stackflow-pda-visualizer/
 
 ---
 
