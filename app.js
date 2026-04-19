@@ -805,7 +805,7 @@ function importPDA(event) {
       $('m-trans').value = def.transitions.map(t =>
         `${t.fromState}, ${t.inputSymbol}, ${t.popSymbol}, ${t.toState}, ${t.pushSymbols.length ? t.pushSymbols.join('') : 'ε'}`
       ).join('\n');
-      alert("JSON Loaded! Click 'Load PDA' to apply.");
+      $('pda-info').textContent = "JSON loaded. Click Load PDA";
     } catch (err) {
       alert("Error importing: " + err.message);
     }
