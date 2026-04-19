@@ -44,27 +44,29 @@ class PDAEngine {
       }
       nodes[aid] = { ...node, status: 'processed' };
       for (const t of matches) {
-        const ns = [...node.stack]; 
+        const ns = [...node.stack];
         // Safer pop logic: explicitly match top, or handle epsilon pop
         if (t.popSymbol !== 'ε') {
           if (ns.length === 0 || ns[ns.length - 1] !== t.popSymbol) continue; // Safety check
           ns.pop();
         }
-        
+
         const ps = t.pushSymbols.filter(s => s !== 'ε' && s !== '');
         for (let i = ps.length - 1; i >= 0; i--) ns.push(ps[i]);
-        
+
         const ni = t.inputSymbol === 'ε' ? node.inputIndex : node.inputIndex + 1;
         const ec = t.inputSymbol === 'ε' ? node.epsilonCount + 1 : 0;
-        
+
         // Prevent infinite epsilon loops with hardcap (safeguard)
         if (ec > 100) {
           console.warn('Infinite ε-loop detected and halted');
-          continue; 
+          continue;
         }
 
-        const child = { id: nextId++, parentId: node.id, state: t.toState, inputIndex: ni,
-          stack: ns, status: 'active', transition: t, depth: node.depth + 1, epsilonCount: ec };
+        const child = {
+          id: nextId++, parentId: node.id, state: t.toState, inputIndex: ni,
+          stack: ns, status: 'active', transition: t, depth: node.depth + 1, epsilonCount: ec
+        };
         if (this._check(child, sim.input)) child.status = 'accepted';
         nodes.push(child);
         if (nodes.length > 5000) {
@@ -77,7 +79,7 @@ class PDAEngine {
     let result = null;
     if (nodes.some(n => n.status === 'accepted')) result = 'accepted';
     else if (newActive.length === 0) result = 'rejected';
-    
+
     return { ...sim, treeNodes: nodes, activeIds: newActive, nextId, stepCount: sim.stepCount + 1, result, history };
   }
 
@@ -86,8 +88,10 @@ class PDAEngine {
     const prev = sim.history[sim.history.length - 1];
     const restored = sim.treeNodes.slice(0, prev.len).map((n, i) =>
       prev.activeIds.includes(i) ? { ...n, status: 'active' } : n);
-    return { ...sim, treeNodes: restored, activeIds: prev.activeIds, nextId: prev.len,
-      stepCount: Math.max(0, sim.stepCount - 1), result: null, history: sim.history.slice(0, -1) };
+    return {
+      ...sim, treeNodes: restored, activeIds: prev.activeIds, nextId: prev.len,
+      stepCount: Math.max(0, sim.stepCount - 1), result: null, history: sim.history.slice(0, -1)
+    };
   }
 
   _findTrans(node, input) {
@@ -122,8 +126,10 @@ function parseCFG(text) {
     for (const alt of rhs.split('|').map(s => s.trim())) {
       if (alt === 'ε' || alt === '') { rules.push({ lhs: lhs.trim(), rhs: [] }); continue; }
       const syms = [];
-      for (const ch of alt) { if (ch === ' ') continue; syms.push(ch);
-        if (ch >= 'A' && ch <= 'Z') vars.add(ch); else terms.add(ch); }
+      for (const ch of alt) {
+        if (ch === ' ') continue; syms.push(ch);
+        if (ch >= 'A' && ch <= 'Z') vars.add(ch); else terms.add(ch);
+      }
       rules.push({ lhs: lhs.trim(), rhs: syms });
     }
   }
@@ -138,78 +144,101 @@ function cfgToPDA(cfg) {
   for (const t of cfg.terminals)
     trans.push({ fromState: 'q_loop', inputSymbol: t, popSymbol: t, toState: 'q_loop', pushSymbols: [] });
   trans.push({ fromState: 'q_loop', inputSymbol: 'ε', popSymbol: 'Z', toState: 'q_accept', pushSymbols: ['Z'] });
-  return { states: ['q_start', 'q_loop', 'q_accept'], inputAlphabet: [...cfg.terminals],
+  return {
+    states: ['q_start', 'q_loop', 'q_accept'], inputAlphabet: [...cfg.terminals],
     stackAlphabet: [...new Set(['Z', ...cfg.variables, ...cfg.terminals])],
-    startState: 'q_start', startSymbol: 'Z', acceptStates: ['q_accept'], transitions: trans };
+    startState: 'q_start', startSymbol: 'Z', acceptStates: ['q_accept'], transitions: trans
+  };
 }
 
 // ─── Examples ────────────────────────────────────
 const PDA_EXAMPLES = [
-  { id:'anbn', name:'aⁿbⁿ', description:'Equal a\'s followed by b\'s', acceptanceMode:'finalState',
-    testStrings:{ accept:['','ab','aabb','aaabbb'], reject:['a','b','aab','abb','ba'] },
-    definition:{ states:['q0','q1','q2'], inputAlphabet:['a','b'], stackAlphabet:['Z','A'],
-      startState:'q0', startSymbol:'Z', acceptStates:['q2'], transitions:[
-        {fromState:'q0',inputSymbol:'a',popSymbol:'Z',toState:'q0',pushSymbols:['A','Z']},
-        {fromState:'q0',inputSymbol:'a',popSymbol:'A',toState:'q0',pushSymbols:['A','A']},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'A',toState:'q1',pushSymbols:[]},
-        {fromState:'q1',inputSymbol:'b',popSymbol:'A',toState:'q1',pushSymbols:[]},
-        {fromState:'q1',inputSymbol:'ε',popSymbol:'Z',toState:'q2',pushSymbols:['Z']},
-        {fromState:'q0',inputSymbol:'ε',popSymbol:'Z',toState:'q2',pushSymbols:['Z']}]}},
-  { id:'parens', name:'Balanced Parentheses', description:'Nested parentheses', acceptanceMode:'finalState',
-    testStrings:{ accept:['','()','(())','()()','((()))'], reject:['(',')',')(','))('] },
-    definition:{ states:['q0','qf'], inputAlphabet:['(',')'], stackAlphabet:['Z','X'],
-      startState:'q0', startSymbol:'Z', acceptStates:['qf'], transitions:[
-        {fromState:'q0',inputSymbol:'(',popSymbol:'Z',toState:'q0',pushSymbols:['X','Z']},
-        {fromState:'q0',inputSymbol:'(',popSymbol:'X',toState:'q0',pushSymbols:['X','X']},
-        {fromState:'q0',inputSymbol:')',popSymbol:'X',toState:'q0',pushSymbols:[]},
-        {fromState:'q0',inputSymbol:'ε',popSymbol:'Z',toState:'qf',pushSymbols:['Z']}]}},
-  { id:'palindrome', name:'Even Palindromes (wwᴿ)', description:'Even-length palindromes over {a,b}', acceptanceMode:'finalState',
-    testStrings:{ accept:['','aa','bb','abba','baab'], reject:['a','ab','aba','aab'] },
-    definition:{ states:['q0','q1','q2'], inputAlphabet:['a','b'], stackAlphabet:['Z','a','b'],
-      startState:'q0', startSymbol:'Z', acceptStates:['q2'], transitions:[
-        {fromState:'q0',inputSymbol:'a',popSymbol:'Z',toState:'q0',pushSymbols:['a','Z']},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'Z',toState:'q0',pushSymbols:['b','Z']},
-        {fromState:'q0',inputSymbol:'a',popSymbol:'a',toState:'q0',pushSymbols:['a','a']},
-        {fromState:'q0',inputSymbol:'a',popSymbol:'b',toState:'q0',pushSymbols:['a','b']},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'a',toState:'q0',pushSymbols:['b','a']},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'b',toState:'q0',pushSymbols:['b','b']},
-        {fromState:'q0',inputSymbol:'ε',popSymbol:'Z',toState:'q1',pushSymbols:['Z']},
-        {fromState:'q0',inputSymbol:'ε',popSymbol:'a',toState:'q1',pushSymbols:['a']},
-        {fromState:'q0',inputSymbol:'ε',popSymbol:'b',toState:'q1',pushSymbols:['b']},
-        {fromState:'q1',inputSymbol:'a',popSymbol:'a',toState:'q1',pushSymbols:[]},
-        {fromState:'q1',inputSymbol:'b',popSymbol:'b',toState:'q1',pushSymbols:[]},
-        {fromState:'q1',inputSymbol:'ε',popSymbol:'Z',toState:'q2',pushSymbols:['Z']}]}},
-  { id:'equal-ab', name:'Equal a\'s and b\'s', description:'#a = #b in any order', acceptanceMode:'finalState',
-    testStrings:{ accept:['','ab','ba','aabb','abab','bbaa'], reject:['a','b','aab','bba'] },
-    definition:{ states:['q0','qf'], inputAlphabet:['a','b'], stackAlphabet:['Z','A','B'],
-      startState:'q0', startSymbol:'Z', acceptStates:['qf'], transitions:[
-        {fromState:'q0',inputSymbol:'a',popSymbol:'Z',toState:'q0',pushSymbols:['A','Z']},
-        {fromState:'q0',inputSymbol:'a',popSymbol:'A',toState:'q0',pushSymbols:['A','A']},
-        {fromState:'q0',inputSymbol:'a',popSymbol:'B',toState:'q0',pushSymbols:[]},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'Z',toState:'q0',pushSymbols:['B','Z']},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'B',toState:'q0',pushSymbols:['B','B']},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'A',toState:'q0',pushSymbols:[]},
-        {fromState:'q0',inputSymbol:'ε',popSymbol:'Z',toState:'qf',pushSymbols:['Z']}]}},
-  { id:'more-bs', name:'aⁱbʲ (i < j)', description:'More b\'s than a\'s', acceptanceMode:'finalState',
-    testStrings:{ accept:['b','abb','aabbb','bb'], reject:['','a','ab','aabb','ba'] },
-    definition:{ states:['q0','q1','q2'], inputAlphabet:['a','b'], stackAlphabet:['Z','A'],
-      startState:'q0', startSymbol:'Z', acceptStates:['q2'], transitions:[
-        {fromState:'q0',inputSymbol:'a',popSymbol:'Z',toState:'q0',pushSymbols:['A','Z']},
-        {fromState:'q0',inputSymbol:'a',popSymbol:'A',toState:'q0',pushSymbols:['A','A']},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'A',toState:'q1',pushSymbols:[]},
-        {fromState:'q0',inputSymbol:'b',popSymbol:'Z',toState:'q2',pushSymbols:['Z']},
-        {fromState:'q1',inputSymbol:'b',popSymbol:'A',toState:'q1',pushSymbols:[]},
-        {fromState:'q1',inputSymbol:'b',popSymbol:'Z',toState:'q2',pushSymbols:['Z']},
-        {fromState:'q2',inputSymbol:'b',popSymbol:'Z',toState:'q2',pushSymbols:['Z']}]}}
+  {
+    id: 'anbn', name: 'aⁿbⁿ', language: 'a^n b^n', description: 'Equal a\'s followed by b\'s', acceptanceMode: 'finalState',
+    testStrings: { accept: ['', 'ab', 'aabb', 'aaabbb'], reject: ['a', 'b', 'aab', 'abb', 'ba'] },
+    definition: {
+      states: ['q0', 'q1', 'q2'], inputAlphabet: ['a', 'b'], stackAlphabet: ['Z', 'A'],
+      startState: 'q0', startSymbol: 'Z', acceptStates: ['q2'], transitions: [
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'Z', toState: 'q0', pushSymbols: ['A', 'Z'] },
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'A', toState: 'q0', pushSymbols: ['A', 'A'] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'A', toState: 'q1', pushSymbols: [] },
+        { fromState: 'q1', inputSymbol: 'b', popSymbol: 'A', toState: 'q1', pushSymbols: [] },
+        { fromState: 'q1', inputSymbol: 'ε', popSymbol: 'Z', toState: 'q2', pushSymbols: ['Z'] },
+        { fromState: 'q0', inputSymbol: 'ε', popSymbol: 'Z', toState: 'q2', pushSymbols: ['Z'] }]
+    }
+  },
+  {
+    id: 'parens', name: 'Balanced Parentheses', language: 'Balanced Parentheses', description: 'Nested parentheses', acceptanceMode: 'finalState',
+    testStrings: { accept: ['', '()', '(())', '()()', '((()))'], reject: ['(', ')', ')(', '))('] },
+    definition: {
+      states: ['q0', 'qf'], inputAlphabet: ['(', ')'], stackAlphabet: ['Z', 'X'],
+      startState: 'q0', startSymbol: 'Z', acceptStates: ['qf'], transitions: [
+        { fromState: 'q0', inputSymbol: '(', popSymbol: 'Z', toState: 'q0', pushSymbols: ['X', 'Z'] },
+        { fromState: 'q0', inputSymbol: '(', popSymbol: 'X', toState: 'q0', pushSymbols: ['X', 'X'] },
+        { fromState: 'q0', inputSymbol: ')', popSymbol: 'X', toState: 'q0', pushSymbols: [] },
+        { fromState: 'q0', inputSymbol: 'ε', popSymbol: 'Z', toState: 'qf', pushSymbols: ['Z'] }]
+    }
+  },
+  {
+    id: 'palindrome', name: 'Even Palindromes (wwᴿ)', language: 'Even Palindromes (wwᴿ)', description: 'Even-length palindromes over {a,b}', acceptanceMode: 'finalState',
+    testStrings: { accept: ['', 'aa', 'bb', 'abba', 'baab'], reject: ['a', 'ab', 'aba', 'aab'] },
+    definition: {
+      states: ['q0', 'q1', 'q2'], inputAlphabet: ['a', 'b'], stackAlphabet: ['Z', 'a', 'b'],
+      startState: 'q0', startSymbol: 'Z', acceptStates: ['q2'], transitions: [
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'Z', toState: 'q0', pushSymbols: ['a', 'Z'] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'Z', toState: 'q0', pushSymbols: ['b', 'Z'] },
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'a', toState: 'q0', pushSymbols: ['a', 'a'] },
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'b', toState: 'q0', pushSymbols: ['a', 'b'] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'a', toState: 'q0', pushSymbols: ['b', 'a'] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'b', toState: 'q0', pushSymbols: ['b', 'b'] },
+        { fromState: 'q0', inputSymbol: 'ε', popSymbol: 'Z', toState: 'q1', pushSymbols: ['Z'] },
+        { fromState: 'q0', inputSymbol: 'ε', popSymbol: 'a', toState: 'q1', pushSymbols: ['a'] },
+        { fromState: 'q0', inputSymbol: 'ε', popSymbol: 'b', toState: 'q1', pushSymbols: ['b'] },
+        { fromState: 'q1', inputSymbol: 'a', popSymbol: 'a', toState: 'q1', pushSymbols: [] },
+        { fromState: 'q1', inputSymbol: 'b', popSymbol: 'b', toState: 'q1', pushSymbols: [] },
+        { fromState: 'q1', inputSymbol: 'ε', popSymbol: 'Z', toState: 'q2', pushSymbols: ['Z'] }]
+    }
+  },
+  {
+    id: 'equal-ab', name: 'Equal a\'s and b\'s', language: 'Equal a\'s and b\'s', description: '#a = #b in any order', acceptanceMode: 'finalState',
+    testStrings: { accept: ['', 'ab', 'ba', 'aabb', 'abab', 'bbaa'], reject: ['a', 'b', 'aab', 'bba'] },
+    definition: {
+      states: ['q0', 'qf'], inputAlphabet: ['a', 'b'], stackAlphabet: ['Z', 'A', 'B'],
+      startState: 'q0', startSymbol: 'Z', acceptStates: ['qf'], transitions: [
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'Z', toState: 'q0', pushSymbols: ['A', 'Z'] },
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'A', toState: 'q0', pushSymbols: ['A', 'A'] },
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'B', toState: 'q0', pushSymbols: [] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'Z', toState: 'q0', pushSymbols: ['B', 'Z'] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'B', toState: 'q0', pushSymbols: ['B', 'B'] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'A', toState: 'q0', pushSymbols: [] },
+        { fromState: 'q0', inputSymbol: 'ε', popSymbol: 'Z', toState: 'qf', pushSymbols: ['Z'] }]
+    }
+  },
+  {
+    id: 'more-bs', name: 'aⁱbʲ (i < j)', language: 'a^i b^j (i < j)', description: 'More b\'s than a\'s', acceptanceMode: 'finalState',
+    testStrings: { accept: ['b', 'abb', 'aabbb', 'bb'], reject: ['', 'a', 'ab', 'aabb', 'ba'] },
+    definition: {
+      states: ['q0', 'q1', 'q2'], inputAlphabet: ['a', 'b'], stackAlphabet: ['Z', 'A'],
+      startState: 'q0', startSymbol: 'Z', acceptStates: ['q2'], transitions: [
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'Z', toState: 'q0', pushSymbols: ['A', 'Z'] },
+        { fromState: 'q0', inputSymbol: 'a', popSymbol: 'A', toState: 'q0', pushSymbols: ['A', 'A'] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'A', toState: 'q1', pushSymbols: [] },
+        { fromState: 'q0', inputSymbol: 'b', popSymbol: 'Z', toState: 'q2', pushSymbols: ['Z'] },
+        { fromState: 'q1', inputSymbol: 'b', popSymbol: 'A', toState: 'q1', pushSymbols: [] },
+        { fromState: 'q1', inputSymbol: 'b', popSymbol: 'Z', toState: 'q2', pushSymbols: ['Z'] },
+        { fromState: 'q2', inputSymbol: 'b', popSymbol: 'Z', toState: 'q2', pushSymbols: ['Z'] }]
+    }
+  }
 ];
 
 const CFG_EXAMPLES = [
-  { id:'cfg-anbn', name:'S → aSb | ε', grammar:'S -> aSb | ε', testStrings:{accept:['','ab','aabb'],reject:['a','ba']} },
-  { id:'cfg-parens', name:'S → (S) | SS | ε', grammar:'S -> (S) | SS | ε', testStrings:{accept:['','()','(())'],reject:['(',')']} },
-  { id:'cfg-palindrome', name:'S → aSa | bSb | ε', grammar:'S -> aSa | bSb | ε', testStrings:{accept:['','aa','abba'],reject:['a','ab']} },
+  { id: 'cfg-anbn', name: 'S → aSb | ε', language: 'S → aSb | ε', grammar: 'S -> aSb | ε', testStrings: { accept: ['', 'ab', 'aabb'], reject: ['a', 'ba'] } },
+  { id: 'cfg-parens', name: 'S → (S) | SS | ε', language: 'S → (S) | SS | ε', grammar: 'S -> (S) | SS | ε', testStrings: { accept: ['', '()', '(())'], reject: ['(', ')'] } },
+  { id: 'cfg-palindrome', name: 'S → aSa | bSb | ε', language: 'S → aSa | bSb | ε', grammar: 'S -> aSa | bSb | ε', testStrings: { accept: ['', 'aa', 'abba'], reject: ['a', 'ab'] } },
 ];
 
 // ─── App State ───────────────────────────────────
+let currentLanguage = '';
 let pdaDef = null, engine = null, simState = null, inputString = '';
 let acceptanceMode = 'finalState', isPlaying = false, speed = 500, playTimer = null, activeExId = null;
 let exTab = 'pda';
@@ -228,8 +257,8 @@ function init() {
 // ─── Examples ────────────────────────────────────
 function renderExampleTabs() {
   $('example-tabs').innerHTML =
-    `<button class="btn ${exTab==='pda'?'btn-primary':''}" onclick="switchTab('pda')" style="font-size:.72rem;padding:4px 12px">PDA Examples</button>` +
-    `<button class="btn ${exTab==='cfg'?'btn-primary':''}" onclick="switchTab('cfg')" style="font-size:.72rem;padding:4px 12px">CFG → PDA</button>`;
+    `<button class="btn ${exTab === 'pda' ? 'btn-primary' : ''}" onclick="switchTab('pda')" style="font-size:.72rem;padding:4px 12px">PDA Examples</button>` +
+    `<button class="btn ${exTab === 'cfg' ? 'btn-primary' : ''}" onclick="switchTab('cfg')" style="font-size:.72rem;padding:4px 12px">CFG → PDA</button>`;
 }
 
 function switchTab(tab) { exTab = tab; renderExampleTabs(); renderExamples(); }
@@ -238,14 +267,14 @@ function renderExamples() {
   const c = $('example-cards'), t = $('test-strings');
   if (exTab === 'pda') {
     c.innerHTML = PDA_EXAMPLES.map(ex =>
-      `<button class="example-card ${activeExId===ex.id?'active':''}" onclick="loadExample(PDA_EXAMPLES.find(e=>e.id==='${ex.id}'))" title="${ex.description}">${ex.name}</button>`
+      `<button class="example-card ${activeExId === ex.id ? 'active' : ''}" onclick="loadExample(PDA_EXAMPLES.find(e=>e.id==='${ex.id}'))" title="${ex.description}">${ex.name}</button>`
     ).join('');
     const active = PDA_EXAMPLES.find(e => e.id === activeExId);
     if (active) {
       t.innerHTML = '<span class="input-label" style="margin-right:4px">Test:</span>' +
-        active.testStrings.accept.slice(0,4).map(s =>
-          `<button class="test-chip accept" onclick="setInput('${s}')">${s||'ε'} ✓</button>`).join('') +
-        active.testStrings.reject.slice(0,3).map(s =>
+        active.testStrings.accept.slice(0, 4).map(s =>
+          `<button class="test-chip accept" onclick="setInput('${s}')">${s || 'ε'} ✓</button>`).join('') +
+        active.testStrings.reject.slice(0, 3).map(s =>
           `<button class="test-chip reject" onclick="setInput('${s}')">${s} ✗</button>`).join('');
     } else t.innerHTML = '';
   } else {
@@ -257,6 +286,7 @@ function renderExamples() {
 }
 
 function loadExample(ex) {
+  currentLanguage = ex.language || ex.name;
   activeExId = ex.id;
   acceptanceMode = ex.acceptanceMode || 'finalState';
   document.querySelector(`input[name="mode"][value="${acceptanceMode}"]`).checked = true;
@@ -277,9 +307,10 @@ function loadCFGExample(id) {
     const cfg = parseCFG(ex.grammar);
     pdaDef = cfgToPDA(cfg);
   } catch (e) {
-    alert("CFG Parsing Error:\\n" + e.message);
+    alert("CFG Parsing Error:\n" + e.message);
     return;
   }
+  currentLanguage = ex.language || ex.name;
   activeExId = null; acceptanceMode = 'finalState';
   engine = new PDAEngine({ ...pdaDef, acceptanceMode });
   simState = null; isPlaying = false; clearTimeout(playTimer);
@@ -297,7 +328,7 @@ function startSimulation() {
   if (pdaDef.inputAlphabet && pdaDef.inputAlphabet.length) {
     for (const ch of str) {
       if (!pdaDef.inputAlphabet.includes(ch)) {
-        alert("Invalid input symbol: '" + ch + "'\\nAllowed: {" + pdaDef.inputAlphabet.join(', ') + "}");
+        alert("Invalid input symbol: '" + ch + "'\nAllowed: {" + pdaDef.inputAlphabet.join(', ') + "}");
         return false;
       }
     }
@@ -305,15 +336,15 @@ function startSimulation() {
   inputString = str;
   engine = new PDAEngine({ ...pdaDef, acceptanceMode });
   simState = engine.initialize(inputString);
-  
+
   renderAll();
-  
+
   // Auto-play automatically on Run
   isPlaying = true;
   updateControls();
   clearTimeout(playTimer);
   playTimer = setTimeout(autoPlay, speed);
-  
+
   return true;
 }
 
@@ -372,6 +403,11 @@ function renderAll() {
   renderComputationTree();
   renderIDDisplay();
   renderResult();
+
+  const langEl = document.getElementById('language-display');
+  if (langEl) {
+    langEl.textContent = currentLanguage ? "Language: " + currentLanguage : "Language: —";
+  }
   updateControls();
   if (pdaDef) $('pda-info').textContent = `${pdaDef.states.length} states · ${pdaDef.transitions.length} rules`;
 }
@@ -385,13 +421,13 @@ function renderStateDiagram() {
   const W = 310, H = 260;
   const R = 18;
   const n = pdaDef.states.length;
-  const cx = W/2;
-  const cy = H/2 - 10;
+  const cx = W / 2;
+  const cy = H / 2 - 10;
   const lr = Math.min(cx, cy) - PAD;
   const pos = {};
-  pdaDef.states.forEach((s,i) => {
-    const a = (2*Math.PI*i)/n - Math.PI/2;
-    pos[s] = { x: cx + lr*Math.cos(a), y: cy + lr*Math.sin(a), a: a };
+  pdaDef.states.forEach((s, i) => {
+    const a = (2 * Math.PI * i) / n - Math.PI / 2;
+    pos[s] = { x: cx + lr * Math.cos(a), y: cy + lr * Math.sin(a), a: a };
   });
 
   // Active sets
@@ -408,8 +444,8 @@ function renderStateDiagram() {
   });
 
   function fmtLabel(t) {
-    const p = t.pushSymbols.filter(s=>s!=='ε'&&s!=='');
-    return `${t.inputSymbol}, ${t.popSymbol}/${p.length?p.join(''):'ε'}`;
+    const p = t.pushSymbols.filter(s => s !== 'ε' && s !== '');
+    return `${t.inputSymbol}, ${t.popSymbol}/${p.length ? p.join('') : 'ε'}`;
   }
 
   let svg = `<svg class="state-diagram-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
@@ -429,53 +465,53 @@ function renderStateDiagram() {
       const p = pos[g.from]; if (!p) continue;
       const loopR = 15;
       const da = 0.55;
-      const ang = p.a !== undefined ? p.a : -Math.PI/2;
-      const sx = p.x + R*Math.cos(ang - da), sy = p.y + R*Math.sin(ang - da);
-      const ex = p.x + R*Math.cos(ang + da), ey = p.y + R*Math.sin(ang + da);
+      const ang = p.a !== undefined ? p.a : -Math.PI / 2;
+      const sx = p.x + R * Math.cos(ang - da), sy = p.y + R * Math.sin(ang - da);
+      const ex = p.x + R * Math.cos(ang + da), ey = p.y + R * Math.sin(ang + da);
       svg += `<path d="M ${sx},${sy} A ${loopR},${loopR} 0 1,1 ${ex},${ey}" class="edge-path${ac}" marker-end="${mk}" fill="none"/>`;
-      
-      const dist = R + loopR*2 + 8;
-      let lx = p.x + dist*Math.cos(ang);
-      let ly = p.y + dist*Math.sin(ang) + 4;
-      
+
+      const dist = R + loopR * 2 + 8;
+      let lx = p.x + dist * Math.cos(ang);
+      let ly = p.y + dist * Math.sin(ang) + 4;
+
       let anchor = 'middle';
-      if (Math.cos(ang) > 0.4) { anchor = 'start'; lx+=2; }
-      else if (Math.cos(ang) < -0.4) { anchor = 'end'; lx-=2; }
-      
+      if (Math.cos(ang) > 0.4) { anchor = 'start'; lx += 2; }
+      else if (Math.cos(ang) < -0.4) { anchor = 'end'; lx -= 2; }
+
       const lineH = 11.5;
-      const off = (label.length-1)*lineH/2;
-      label.forEach((l,i) => {
-        svg += `<text x="${lx}" y="${ly + i*lineH - off}" text-anchor="${anchor}" class="edge-label${ac}">${l}</text>`;
+      const off = (label.length - 1) * lineH / 2;
+      label.forEach((l, i) => {
+        svg += `<text x="${lx}" y="${ly + i * lineH - off}" text-anchor="${anchor}" class="edge-label${ac}">${l}</text>`;
       });
     } else {
-      const p1 = pos[g.from], p2 = pos[g.to]; if (!p1||!p2) continue;
-      const dx=p2.x-p1.x, dy=p2.y-p1.y, d=Math.sqrt(dx*dx+dy*dy);
-      if (d===0) continue;
-      const ux=dx/d, uy=dy/d;
-      const x1=p1.x+ux*R, y1=p1.y+uy*R, x2=p2.x-ux*R, y2=p2.y-uy*R;
+      const p1 = pos[g.from], p2 = pos[g.to]; if (!p1 || !p2) continue;
+      const dx = p2.x - p1.x, dy = p2.y - p1.y, d = Math.sqrt(dx * dx + dy * dy);
+      if (d === 0) continue;
+      const ux = dx / d, uy = dy / d;
+      const x1 = p1.x + ux * R, y1 = p1.y + uy * R, x2 = p2.x - ux * R, y2 = p2.y - uy * R;
       const hasRev = !!groups[`${g.to}->${g.from}`];
-      
+
       let pathD, lx, ly;
       if (hasRev) {
         const co = 35;
-        const mx=(x1+x2)/2 - uy*co, my=(y1+y2)/2 + ux*co;
+        const mx = (x1 + x2) / 2 - uy * co, my = (y1 + y2) / 2 + ux * co;
         pathD = `M ${x1},${y1} Q ${mx},${my} ${x2},${y2}`;
-        lx = (x1+x2)/2 - uy*(co/2 + 14);
-        ly = (y1+y2)/2 + ux*(co/2 + 14);
+        lx = (x1 + x2) / 2 - uy * (co / 2 + 14);
+        ly = (y1 + y2) / 2 + ux * (co / 2 + 14);
       } else {
         pathD = `M ${x1},${y1} L ${x2},${y2}`;
         let nx = -uy, ny = ux;
-        const mx=(x1+x2)/2, my=(y1+y2)/2;
-        if ((mx-cx)*nx + (my-cy)*ny < 0) { nx = -nx; ny = -ny; }
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        if ((mx - cx) * nx + (my - cy) * ny < 0) { nx = -nx; ny = -ny; }
         lx = mx + nx * 24;
         ly = my + ny * 24;
       }
       svg += `<path d="${pathD}" class="edge-path${ac}" marker-end="${mk}" fill="none"/>`;
-      
+
       const lineH = 11.5;
-      const off = (label.length-1)*lineH/2;
-      label.forEach((l,i) => {
-        svg += `<text x="${lx}" y="${ly + i*lineH - off + 4}" text-anchor="middle" class="edge-label${ac}">${l}</text>`;
+      const off = (label.length - 1) * lineH / 2;
+      label.forEach((l, i) => {
+        svg += `<text x="${lx}" y="${ly + i * lineH - off + 4}" text-anchor="middle" class="edge-label${ac}">${l}</text>`;
       });
     }
   }
@@ -483,24 +519,24 @@ function renderStateDiagram() {
   // Draw states ON TOP of edges so circles cover any label that still clips into them
   pdaDef.states.forEach(s => {
     const p = pos[s]; if (!p) return;
-    const isA = aStates.has(s), isAcc = pdaDef.acceptStates.includes(s), isStart = s===pdaDef.startState;
+    const isA = aStates.has(s), isAcc = pdaDef.acceptStates.includes(s), isStart = s === pdaDef.startState;
     const filt = isA ? ' filter="url(#gf)"' : '';
-    if (isStart) svg += `<line x1="${p.x-R-18}" y1="${p.y}" x2="${p.x-R-2}" y2="${p.y}" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>`;
-    if (isAcc) svg += `<circle cx="${p.x}" cy="${p.y}" r="${R+5}" fill="none" stroke="${isA?'#00f0ff':'#475569'}" stroke-width="1.5"${filt}/>`;
-    svg += `<circle cx="${p.x}" cy="${p.y}" r="${R}" fill="${isA?'rgba(0,240,255,.15)':'rgba(13,18,37,.95)'}" stroke="${isA?'#00f0ff':'#475569'}" stroke-width="${isA?2.5:1.5}"${filt}/>`;
-    svg += `<text x="${p.x}" y="${p.y+4}" text-anchor="middle" font-size="11" font-weight="600" fill="${isA?'#00f0ff':'#e2e8f0'}">${s}</text>`;
+    if (isStart) svg += `<line x1="${p.x - R - 18}" y1="${p.y}" x2="${p.x - R - 2}" y2="${p.y}" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>`;
+    if (isAcc) svg += `<circle cx="${p.x}" cy="${p.y}" r="${R + 5}" fill="none" stroke="${isA ? '#00f0ff' : '#475569'}" stroke-width="1.5"${filt}/>`;
+    svg += `<circle cx="${p.x}" cy="${p.y}" r="${R}" fill="${isA ? 'rgba(0,240,255,.15)' : 'rgba(13,18,37,.95)'}" stroke="${isA ? '#00f0ff' : '#475569'}" stroke-width="${isA ? 2.5 : 1.5}"${filt}/>`;
+    svg += `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="11" font-weight="600" fill="${isA ? '#00f0ff' : '#e2e8f0'}">${s}</text>`;
   });
 
   svg += '</svg>';
   el.innerHTML = svg;
-  $('active-states-badge').textContent = aStates.size ? 'Active: '+[...aStates].join(', ') : '';
+  $('active-states-badge').textContent = aStates.size ? 'Active: ' + [...aStates].join(', ') : '';
 }
 
 // ─── Stack ───────────────────────────────────────
 function renderStack() {
   const el = $('stack-container');
   const stack = simState && simState.activeIds.length
-    ? simState.treeNodes[simState.activeIds[0]].stack : (simState && simState.treeNodes.length ? simState.treeNodes[simState.treeNodes.length-1].stack : []);
+    ? simState.treeNodes[simState.activeIds[0]].stack : (simState && simState.treeNodes.length ? simState.treeNodes[simState.treeNodes.length - 1].stack : []);
   const activeBranches = simState ? simState.activeIds.length : 0;
   const branchLabel = activeBranches > 1 ? ` (Displaying one active branch for visualization)` : '';
   $('stack-count').textContent = stack.length + ' items' + branchLabel;
@@ -511,7 +547,7 @@ function renderStack() {
   const rev = [...stack].reverse();
   let html = '<div class="stack-container"><span class="stack-top-label">Top ↓</span><div class="stack-visual">';
   rev.forEach((sym, vi) => {
-    const cls = vi===0 ? 'top' : (sym==='Z'&&vi===rev.length-1 ? 'bottom-marker' : 'regular');
+    const cls = vi === 0 ? 'top' : (sym === 'Z' && vi === rev.length - 1 ? 'bottom-marker' : 'regular');
     html += `<div class="stack-block ${cls}">${sym}</div>`;
   });
   html += '</div><div class="stack-bottom-bar"></div></div>';
@@ -528,12 +564,12 @@ function renderTape() {
 
   const activeBranches = simState ? simState.activeIds.length : 0;
   const branchLabel = activeBranches > 1 ? ` (Branch 1 of ${activeBranches})` : '';
-  
+
   if (!input.length && !isActive) {
     el.innerHTML = '<span class="tape-empty-msg">Enter an input string and press Run to begin</span>';
     $('tape-badge').textContent = 'Head: 0 / 0'; return;
   }
-  const cells = [...input, '⊔','⊔','⊔'];
+  const cells = [...input, '⊔', '⊔', '⊔'];
   let html = '<div class="tape-wrapper">';
   cells.forEach((sym, i) => {
     const isBlank = i >= input.length;
@@ -560,8 +596,8 @@ function renderTransitionTable() {
   pdaDef.transitions.forEach(t => {
     const key = `${t.fromState}|${t.inputSymbol}|${t.popSymbol}|${t.toState}|${t.pushSymbols.join(',')}`;
     const ac = aSet.has(key) ? ' class="active-rule"' : '';
-    const ps = t.pushSymbols.filter(s=>s!=='ε'&&s!=='');
-    html += `<tr${ac}><td>${t.fromState}</td><td>${t.inputSymbol}</td><td>${t.popSymbol}</td><td style="color:var(--text-muted)">→</td><td>${t.toState}</td><td>${ps.length?ps.join(''):'ε'}</td></tr>`;
+    const ps = t.pushSymbols.filter(s => s !== 'ε' && s !== '');
+    html += `<tr${ac}><td>${t.fromState}</td><td>${t.inputSymbol}</td><td>${t.popSymbol}</td><td style="color:var(--text-muted)">→</td><td>${t.toState}</td><td>${ps.length ? ps.join('') : 'ε'}</td></tr>`;
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
@@ -570,39 +606,42 @@ function renderTransitionTable() {
 // ─── Computation Tree ────────────────────────────
 function renderComputationTree() {
   const el = $('tree-container');
-  if (!simState || !simState.treeNodes.length) { el.innerHTML = '<div class="empty-state"><span class="icon">🌳</span><p>Run simulation to see computation tree</p></div>'; $('tree-badge').textContent=''; return; }
+  if (!simState || !simState.treeNodes.length) { el.innerHTML = '<div class="empty-state"><span class="icon">🌳</span><p>Run simulation to see computation tree</p></div>'; $('tree-badge').textContent = ''; return; }
 
   const nodes = simState.treeNodes;
   const NR = 12, LH = 40, MW = 32;
   // Group by depth
   const levels = {};
   let maxD = 0;
-  nodes.forEach(n => { if (!levels[n.depth]) levels[n.depth]=[]; levels[n.depth].push(n); maxD=Math.max(maxD,n.depth); });
-  const w = Math.max(200, Math.max(...Object.values(levels).map(l=>l.length))*MW+60);
-  const h = (maxD+1)*LH+40;
+  nodes.forEach(n => { if (!levels[n.depth]) levels[n.depth] = []; levels[n.depth].push(n); maxD = Math.max(maxD, n.depth); });
+  const w = Math.max(200, Math.max(...Object.values(levels).map(l => l.length)) * MW + 60);
+  const h = (maxD + 1) * LH + 40;
   const pos = {};
-  Object.entries(levels).forEach(([d,lvl]) => {
-    const sp = w/(lvl.length+1);
-    lvl.forEach((n,i) => { pos[n.id] = { x:sp*(i+1), y:parseInt(d)*LH+30 }; });
+  Object.entries(levels).forEach(([d, lvl]) => {
+    const sp = w / (lvl.length + 1);
+    lvl.forEach((n, i) => { pos[n.id] = { x: sp * (i + 1), y: parseInt(d) * LH + 30 }; });
   });
   const aSet = new Set(simState.activeIds);
 
   let svg = `<div style="overflow:auto;max-height:200px"><svg class="computation-tree-svg" viewBox="0 0 ${w} ${h}" style="min-width:${w}px;min-height:${h}px">`;
   // Edges
-  nodes.forEach(n => { if (n.parentId!==null && pos[n.parentId] && pos[n.id]) {
-    svg += `<line x1="${pos[n.parentId].x}" y1="${pos[n.parentId].y}" x2="${pos[n.id].x}" y2="${pos[n.id].y}" class="tree-edge"/>`;
-  }});
+  nodes.forEach(n => {
+    if (n.parentId !== null && pos[n.parentId] && pos[n.id]) {
+      svg += `<line x1="${pos[n.parentId].x}" y1="${pos[n.parentId].y}" x2="${pos[n.id].x}" y2="${pos[n.id].y}" class="tree-edge"/>`;
+    }
+  });
   // Nodes
-  const colors = { accepted:'#00ff88', dead:'#ff4466', active:'#00f0ff', processed:'#475569' };
-  const fills = { accepted:'rgba(0,255,136,.15)', dead:'rgba(255,68,102,.1)', active:'rgba(0,240,255,.15)', processed:'rgba(13,18,37,.8)' };
-  nodes.forEach(n => { if (!pos[n.id]) return;
-    const c = colors[n.status]||'#475569', f = fills[n.status]||fills.processed;
+  const colors = { accepted: '#00ff88', dead: '#ff4466', active: '#00f0ff', processed: '#475569' };
+  const fills = { accepted: 'rgba(0,255,136,.15)', dead: 'rgba(255,68,102,.1)', active: 'rgba(0,240,255,.15)', processed: 'rgba(13,18,37,.8)' };
+  nodes.forEach(n => {
+    if (!pos[n.id]) return;
+    const c = colors[n.status] || '#475569', f = fills[n.status] || fills.processed;
     const p = pos[n.id];
-    svg += `<circle cx="${p.x}" cy="${p.y}" r="${NR}" fill="${f}" stroke="${c}" stroke-width="${aSet.has(n.id)?2:1}"/>`;
-    const label = n.state.replace('q_','q');
-    svg += `<text x="${p.x}" y="${p.y+4}" class="tree-node" fill="${c}" text-anchor="middle" font-size="10">${label}</text>`;
-    if (n.status==='accepted') svg += `<text x="${p.x+NR+3}" y="${p.y+4}" font-size="10" fill="#00ff88" font-family="var(--font-mono)">✓</text>`;
-    if (n.status==='dead') svg += `<text x="${p.x+NR+3}" y="${p.y+4}" font-size="10" fill="#ff4466" font-family="var(--font-mono)">✗</text>`;
+    svg += `<circle cx="${p.x}" cy="${p.y}" r="${NR}" fill="${f}" stroke="${c}" stroke-width="${aSet.has(n.id) ? 2 : 1}"/>`;
+    const label = n.state.replace('q_', 'q');
+    svg += `<text x="${p.x}" y="${p.y + 4}" class="tree-node" fill="${c}" text-anchor="middle" font-size="10">${label}</text>`;
+    if (n.status === 'accepted') svg += `<text x="${p.x + NR + 3}" y="${p.y + 4}" font-size="10" fill="#00ff88" font-family="var(--font-mono)">✓</text>`;
+    if (n.status === 'dead') svg += `<text x="${p.x + NR + 3}" y="${p.y + 4}" font-size="10" fill="#ff4466" font-family="var(--font-mono)">✗</text>`;
   });
   svg += '</svg></div>';
   el.innerHTML = svg;
@@ -614,9 +653,9 @@ function renderIDDisplay() {
   const el = $('id-display');
   if (!simState) { el.innerHTML = '<span class="badge badge-cyan">Ready</span>'; return; }
   const primary = simState.activeIds.length ? simState.treeNodes[simState.activeIds[0]]
-    : simState.treeNodes[simState.treeNodes.length-1];
+    : simState.treeNodes[simState.treeNodes.length - 1];
   if (!primary) { el.innerHTML = `<span class="badge badge-cyan">Step ${simState.stepCount}</span>`; return; }
-  const rem = simState.input.slice(primary.inputIndex).join('')||'ε';
+  const rem = simState.input.slice(primary.inputIndex).join('') || 'ε';
   const stk = primary.stack.length ? [...primary.stack].reverse().join('') : 'ε';
   let html = `<span class="badge badge-cyan">Step ${simState.stepCount}</span>`;
   html += `<span class="id-badge state-badge">State: ${primary.state}</span>`;
@@ -626,18 +665,18 @@ function renderIDDisplay() {
     const t = primary.transition;
     html += `<div class="id-badge" style="background:rgba(0,240,255,0.08);border:1px solid rgba(0,240,255,0.25);color:#00f0ff">δ(${t.fromState}, ${t.inputSymbol}, ${t.popSymbol}) → (${t.toState}, ${t.pushSymbols.join('') || 'ε'})</div>`;
   }
-  if (simState.activeIds.length > 1) html += `<span class="branches-label">+${simState.activeIds.length-1} branch${simState.activeIds.length>2?'es':''}</span>`;
+  if (simState.activeIds.length > 1) html += `<span class="branches-label">+${simState.activeIds.length - 1} branch${simState.activeIds.length > 2 ? 'es' : ''}</span>`;
   el.innerHTML = html;
 }
 
 // ─── Result Banner ───────────────────────────────
 function renderResult() {
   const el = $('result-banner');
-  if (!simState || !simState.result) { el.style.display='none'; return; }
+  if (!simState || !simState.result) { el.style.display = 'none'; return; }
   el.style.display = 'flex';
   el.className = `result-banner ${simState.result}`;
-  const icon = simState.result==='accepted' ? '✓ ACCEPTED' : '✗ REJECTED';
-  el.innerHTML = `${icon} <span style="font-weight:400;font-size:.75rem;opacity:.8">— ${simState.stepCount} step${simState.stepCount!==1?'s':''} · ${simState.treeNodes.length} configs explored</span>`;
+  const icon = simState.result === 'accepted' ? '✓ ACCEPTED' : '✗ REJECTED';
+  el.innerHTML = `${icon} <span style="font-weight:400;font-size:.75rem;opacity:.8">— ${simState.stepCount} step${simState.stepCount !== 1 ? 's' : ''} · ${simState.treeNodes.length} configs explored</span>`;
 }
 
 // ─── Controls State ──────────────────────────────
@@ -657,6 +696,10 @@ function openModal(mode) {
     $('modal-content').innerHTML = `
       <h2>Define Custom PDA</h2>
       <p class="form-hint">Transitions: one per line as <code style="color:var(--cyan);font-family:var(--font-mono);font-size:.75rem">fromState, input, pop, toState, push</code> (use ε for epsilon)</p>
+      <div class="input-group">
+        <label class="input-label">Language Name</label>
+        <input id="custom-language" class="input" placeholder="Even a-count" />
+      </div>
       <div class="form-row">
         <div class="form-group"><label>States (comma-separated)</label><input class="input" id="m-states" value="q0, q1, q2" style="width:100%"/></div>
         <div class="form-group"><label>Input Alphabet</label><input class="input" id="m-input" value="a, b" style="width:100%"/></div>
@@ -689,9 +732,9 @@ function closeModal() { $('modal-overlay').style.display = 'none'; }
 
 function loadCustomPDA() {
   try {
-    const parse = s => s.split(',').map(x=>x.trim()).filter(Boolean);
-    const transLines = $('m-trans').value.split('\n').map(l=>l.trim()).filter(l=>l);
-    
+    const parse = s => s.split(',').map(x => x.trim()).filter(Boolean);
+    const transLines = $('m-trans').value.split('\n').map(l => l.trim()).filter(l => l);
+
     // Basic validation
     const states = parse($('m-states').value);
     const inputAlphabet = parse($('m-input').value);
@@ -699,29 +742,33 @@ function loadCustomPDA() {
     const startState = $('m-start').value.trim();
     const startSymbol = $('m-symbol').value.trim();
     const acceptStates = parse($('m-accept').value);
-    
+
     if (states.length === 0) throw new Error("States cannot be empty");
     if (!states.includes(startState)) throw new Error(`Start state '${startState}' is not in states list`);
     if (!stackAlphabet.includes(startSymbol)) throw new Error(`Start symbol '${startSymbol}' is not in stack alphabet`);
 
     const transitions = transLines.map((line, idx) => {
-      const p = line.split(',').map(s=>s.trim());
+      const p = line.split(',').map(s => s.trim());
       if (p.length < 5) throw new Error(`Invalid transition format on line ${idx + 1}: ${line}`);
-      
+
       const fromState = p[0], inputSymbol = p[1], popSymbol = p[2], toState = p[3], pushStr = p[4];
-      
+
       if (!states.includes(fromState)) throw new Error(`Unknown fromState '${fromState}' on line ${idx + 1}`);
       if (!states.includes(toState)) throw new Error(`Unknown toState '${toState}' on line ${idx + 1}`);
       if (inputSymbol !== 'ε' && !inputAlphabet.includes(inputSymbol)) throw new Error(`Unknown input symbol '${inputSymbol}' on line ${idx + 1}`);
       if (popSymbol !== 'ε' && !stackAlphabet.includes(popSymbol)) throw new Error(`Unknown pop symbol '${popSymbol}' on line ${idx + 1}`);
-      
-      const pushSymbols = pushStr === 'ε' || pushStr === '' ? [] : pushStr.split('').filter(c=>c!==' ');
-      pushSymbols.forEach(ps => { if(!stackAlphabet.includes(ps)) throw new Error(`Unknown push symbol '${ps}' on line ${idx + 1}`); });
+
+      const pushSymbols = pushStr === 'ε' || pushStr === '' ? [] : pushStr.split('').filter(c => c !== ' ');
+      pushSymbols.forEach(ps => { if (!stackAlphabet.includes(ps)) throw new Error(`Unknown push symbol '${ps}' on line ${idx + 1}`); });
 
       return { fromState, inputSymbol, popSymbol, toState, pushSymbols };
     }).filter(Boolean);
-    
+
     pdaDef = { states, inputAlphabet, stackAlphabet, startState, startSymbol, acceptStates, transitions };
+    const langInput = document.getElementById('custom-language');
+    currentLanguage = langInput && langInput.value
+      ? langInput.value
+      : "Custom PDA";
     activeExId = null; engine = new PDAEngine({ ...pdaDef, acceptanceMode });
     simState = null; $('btn-run').disabled = false;
     closeModal(); renderExamples(); renderAll();
@@ -745,7 +792,7 @@ function importPDA(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = function (e) {
     try {
       const def = JSON.parse(e.target.result);
       if (!def.states || !def.transitions) throw new Error("Invalid JSON structure");
@@ -754,12 +801,12 @@ function importPDA(event) {
       $('m-stack').value = def.stackAlphabet.join(', ');
       $('m-start').value = def.startState;
       $('m-symbol').value = def.startSymbol;
-      $('m-accept').value = (def.acceptStates||[]).join(', ');
-      $('m-trans').value = def.transitions.map(t => 
+      $('m-accept').value = (def.acceptStates || []).join(', ');
+      $('m-trans').value = def.transitions.map(t =>
         `${t.fromState}, ${t.inputSymbol}, ${t.popSymbol}, ${t.toState}, ${t.pushSymbols.length ? t.pushSymbols.join('') : 'ε'}`
       ).join('\n');
       alert("JSON Loaded! Click 'Load PDA' to apply.");
-    } catch(err) {
+    } catch (err) {
       alert("Error importing: " + err.message);
     }
   };
@@ -770,10 +817,11 @@ function loadCustomCFG() {
   try {
     const cfg = parseCFG($('m-cfg').value);
     pdaDef = cfgToPDA(cfg);
+    currentLanguage = "Custom PDA";
     activeExId = null; engine = new PDAEngine({ ...pdaDef, acceptanceMode });
     simState = null; $('btn-run').disabled = false;
     closeModal(); renderExamples(); renderAll();
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch (e) { alert('Error: ' + e.message); }
 }
 
 // ─── Boot ────────────────────────────────────────
